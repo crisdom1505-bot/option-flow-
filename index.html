@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OptionFlow — Live Data</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#080c10;--bg2:#0d1117;--bg3:#161b22;--bg4:#1c2230;
+    --border:#1e2d3d;--border2:#2a3a4d;
+    --text:#c9d1d9;--text2:#8b949e;--text3:#4a5568;
+    --green:#3fb950;--green2:#2ea043;--green-dim:rgba(63,185,80,0.15);
+    --red:#f85149;--red2:#da3633;--red-dim:rgba(248,81,73,0.15);
+    --blue:#388bfd;--blue-dim:rgba(56,139,253,0.15);
+    --amber:#d29922;--amber-dim:rgba(210,153,34,0.15);
+    --purple:#8957e5;--cyan:#39c5cf;--accent:#1f6feb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;min-height:100vh}
+
+  /* NAV */
+  .nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;height:50px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+  .logo{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:#fff;letter-spacing:-0.5px}
+  .logo span{color:var(--blue)}
+  .ticker-tabs{display:flex;gap:4px;margin-left:12px}
+  .tab{padding:5px 14px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s}
+  .tab:hover{border-color:var(--blue);color:var(--text)}
+  .tab.active{background:var(--blue);border-color:var(--blue);color:#fff}
+  .custom-ticker{display:flex;gap:6px;margin-left:8px}
+  .custom-input{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 10px;width:80px;outline:none;text-transform:uppercase}
+  .custom-input:focus{border-color:var(--blue)}
+  .custom-input::placeholder{color:var(--text3)}
+  .go-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;cursor:pointer}
+  .go-btn:hover{background:#1a60d9}
+  .nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .nav-price{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
+  .nav-change{font-size:12px;padding:3px 8px;border-radius:5px}
+  .up{color:var(--green);background:var(--green-dim)}
+  .dn{color:var(--red);background:var(--red-dim)}
+  .live-badge{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);border:1px solid var(--border2);border-radius:5px;padding:3px 8px}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+  /* LOADING */
+  .loading-overlay{position:fixed;inset:0;background:rgba(8,12,16,0.85);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+  .loading-overlay.hidden{display:none}
+  .spinner{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text2)}
+  .loading-ticker{color:var(--blue);font-weight:600}
+
+  /* ERROR */
+  .error-banner{background:rgba(218,54,51,0.12);border:1px solid var(--red2);border-radius:8px;padding:12px 16px;margin:16px 20px;display:none;align-items:center;gap:10px;font-size:12px;color:var(--red)}
+  .error-banner.show{display:flex}
+
+  /* MAIN GRID */
+  .main{padding:16px 20px;display:grid;grid-template-columns:320px 1fr 260px;gap:14px}
+
+  /* PANEL */
+  .panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .panel-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3)}
+  .panel-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text2)}
+
+  /* REGIME */
+  .regime-bar{display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--bg3);border-bottom:1px solid var(--border)}
+  .regime-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .regime-text{font-size:12px;font-weight:500}
+  .regime-desc{font-size:11px;color:var(--text2);margin-left:4px}
+  .regime-right{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text2);white-space:nowrap}
+
+  /* STATS */
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr)}
+  .stat-cell{padding:11px 14px;border-right:1px solid var(--border)}
+  .stat-cell:last-child{border-right:none}
+  .stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:4px}
+  .stat-num{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
+
+  /* CHARTS */
+  .chart-wrap{position:relative;width:100%}
+
+  /* KEY LEVELS */
+  .levels-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+  .level-card{padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3)}
+  .level-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px}
+  .level-val{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:600;line-height:1}
+  .level-sub{font-size:10px;color:var(--text3);margin-top:3px}
+  .lc-green .level-label,.lc-green .level-val{color:var(--green)}
+  .lc-red .level-label,.lc-red .level-val{color:var(--red)}
+  .lc-amber .level-label,.lc-amber .level-val{color:var(--amber)}
+  .lc-blue .level-label,.lc-blue .level-val{color:var(--blue)}
+  .lc-cyan .level-label,.lc-cyan .level-val{color:var(--cyan)}
+  .lc-purple .level-label,.lc-purple .level-val{color:var(--purple)}
+
+  /* NET GEX BAR */
+  .net-gex{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:12px}
+  .net-gex-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+  .net-gex-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text2)}
+  .net-gex-val{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600}
+  .gex-bar-track{height:9px;background:var(--bg4);border-radius:5px;overflow:hidden;display:flex}
+  .gex-bar-pos{height:100%;background:var(--green2);transition:width 0.5s}
+  .gex-bar-neg{height:100%;background:var(--red2);transition:width 0.5s}
+  .gex-bar-labels{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--text3)}
+
+  /* VOL METRICS */
+  .vol-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+  .vol-card{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 11px}
+  .vol-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:4px}
+  .vol-val{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600}
+
+  /* VANNA/CHARM */
+  .vc-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .vc-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
+  .vc-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:5px}
+  .vc-val{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600}
+
+  /* SCROLL */
+  .scroll-body{overflow-y:auto;max-height:280px}
+  .scroll-body::-webkit-scrollbar{width:4px}
+  .scroll-body::-webkit-scrollbar-track{background:transparent}
+  .scroll-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+  /* TEXT COLORS */
+  .text-green{color:var(--green)}
+  .text-red{color:var(--red)}
+  .text-amber{color:var(--amber)}
+  .text-blue{color:var(--blue)}
+  .text-cyan{color:var(--cyan)}
+  .text-purple{color:var(--purple)}
+  .text-muted{color:var(--text2)}
+
+  /* BADGES */
+  .badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600}
+  .badge-pos{background:var(--green-dim);color:var(--green)}
+  .badge-neg{background:var(--red-dim);color:var(--red)}
+  .badge-neu{background:rgba(139,148,158,0.15);color:var(--text2)}
+
+  /* BOTTOM */
+  .bottom-strip{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px 20px}
+
+  /* RIGHT COL */
+  .right-col{display:flex;flex-direction:column;gap:14px}
+
+  /* SECTION LABEL */
+  .section-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+  /* EXPIRY TABS */
+  .expiry-row{display:flex;gap:5px;padding:9px 16px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap}
+  .expiry-btn{padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;cursor:pointer;transition:all 0.15s}
+  .expiry-btn:hover{border-color:var(--blue);color:var(--text)}
+  .expiry-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* SUMMARY TABLE */
+  .sum-table{width:100%;border-collapse:collapse}
+  .sum-table td{padding:6px 8px;font-size:12px;border-bottom:1px solid rgba(30,45,61,0.5)}
+  .sum-table td:first-child{color:var(--text2);width:55%}
+  .sum-table td:last-child{font-family:'IBM Plex Mono',monospace;font-weight:500;text-align:right}
+  .sum-table tr:last-child td{border-bottom:none}
+  .sum-table tr:hover td{background:var(--bg3)}
+
+  /* SPARKLINE-LIKE IV ROW */
+  .iv-row{display:flex;align-items:center;gap:8px;padding:8px 0}
+  .iv-pill{padding:3px 9px;border-radius:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
+
+  .panel-body{padding:14px 16px}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Cargando <span class="loading-ticker" id="loading-ticker">SPY</span> desde FlashAlpha...</div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <div class="logo">Option<span>Flow</span></div>
+  <div class="ticker-tabs">
+    <button class="tab active" onclick="loadTicker('SPY',this)">SPY</button>
+    <button class="tab" onclick="loadTicker('QQQ',this)">QQQ</button>
+    <button class="tab" onclick="loadTicker('NVDA',this)">NVDA</button>
+    <button class="tab" onclick="loadTicker('TSLA',this)">TSLA</button>
+    <button class="tab" onclick="loadTicker('SPX',this)">SPX</button>
+  </div>
+  <div class="custom-ticker">
+    <input class="custom-input" id="custom-input" placeholder="AAPL" maxlength="5"
+      onkeydown="if(event.key==='Enter')loadCustom()">
+    <button class="go-btn" onclick="loadCustom()">→</button>
+  </div>
+  <div class="nav-right">
+    <span class="nav-price" id="nav-price">—</span>
+    <span class="nav-change" id="nav-change" style="color:var(--text2)">cargando...</span>
+    <div class="live-badge"><div class="live-dot"></div><span id="live-label">LIVE</span></div>
+  </div>
+</div>
+
+<!-- ERROR BANNER -->
+<div class="error-banner" id="error-banner">
+  <span>⚠</span>
+  <span id="error-msg">No se pudo conectar con FlashAlpha API.</span>
+</div>
+
+<!-- MAIN GRID -->
+<div class="main">
+
+  <!-- LEFT: GEX POR STRIKE -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">GEX por Strike</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3)" id="gex-header-label">—</span>
+    </div>
+    <div class="expiry-row">
+      <button class="expiry-btn active">ALL</button>
+      <button class="expiry-btn">0DTE</button>
+      <button class="expiry-btn">Weekly</button>
+      <button class="expiry-btn">Monthly</button>
+    </div>
+    <div style="padding:12px 8px">
+      <div class="chart-wrap" style="height:440px"><canvas id="gexChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- REGIME + STATS -->
+    <div class="panel">
+      <div class="regime-bar">
+        <div class="regime-dot" id="regime-dot"></div>
+        <span class="regime-text" id="regime-text">—</span>
+        <span class="regime-desc" id="regime-desc"></span>
+        <span class="regime-right" id="regime-right">—</span>
+      </div>
+      <div class="stats-row">
+        <div class="stat-cell">
+          <div class="stat-lbl">Gamma Flip</div>
+          <div class="stat-num text-amber" id="stat-flip">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-lbl">Call Wall</div>
+          <div class="stat-num text-green" id="stat-call">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-lbl">Put Wall</div>
+          <div class="stat-num text-red" id="stat-put">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-lbl">ATM IV</div>
+          <div class="stat-num text-blue" id="stat-iv">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GEX SUMMARY -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Resumen de Exposición</span>
+        <span style="font-size:10px;color:var(--text3)" id="summary-updated">—</span>
+      </div>
+      <div class="panel-body" style="padding:12px 16px">
+        <div class="vol-grid" id="vol-grid">
+          <div class="vol-card"><div class="vol-lbl">ATM IV</div><div class="vol-val text-blue" id="v-atmiv">—</div></div>
+          <div class="vol-card"><div class="vol-lbl">HV20</div><div class="vol-val text-muted" id="v-hv20">—</div></div>
+          <div class="vol-card"><div class="vol-lbl">VRP</div><div class="vol-val" id="v-vrp">—</div></div>
+          <div class="vol-card"><div class="vol-lbl">IV Pctile</div><div class="vol-val text-purple" id="v-ivpct">—</div></div>
+          <div class="vol-card"><div class="vol-lbl">Net GEX</div><div class="vol-val" id="v-netgex">—</div></div>
+          <div class="vol-card"><div class="vol-lbl">Régimen</div><div class="vol-val" id="v-regime">—</div></div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="section-label">Tabla de Exposición por Strike — Top Niveles</div>
+          <table class="sum-table" id="levels-table">
+            <tr><td>Call Wall</td><td id="t-call">—</td></tr>
+            <tr><td>Put Wall</td><td id="t-put">—</td></tr>
+            <tr><td>Gamma Flip</td><td id="t-flip">—</td></tr>
+            <tr><td>Max Pain</td><td id="t-pain">—</td></tr>
+            <tr><td>GEX Neto</td><td id="t-netgex">—</td></tr>
+            <tr><td>DEX Neto</td><td id="t-netdex">—</td></tr>
+            <tr><td>VEX Neto</td><td id="t-netvex">—</td></tr>
+            <tr><td>CHEX Neto</td><td id="t-netchex">—</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEX POR STRIKE -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">DEX — Delta Exposure por Strike</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text2)" id="dex-total">—</span>
+      </div>
+      <div style="padding:10px 8px">
+        <div class="chart-wrap" style="height:180px"><canvas id="dexChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right-col">
+
+    <!-- KEY LEVELS -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Niveles Clave</span>
+        <span style="font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--text3)" id="levels-ticker">—</span>
+      </div>
+      <div class="panel-body">
+        <div class="levels-grid">
+          <div class="level-card lc-green">
+            <div class="level-label">Call Wall</div>
+            <div class="level-val" id="lv-call">—</div>
+            <div class="level-sub">Resistencia máxima</div>
+          </div>
+          <div class="level-card lc-red">
+            <div class="level-label">Put Wall</div>
+            <div class="level-val" id="lv-put">—</div>
+            <div class="level-sub">Soporte máximo</div>
+          </div>
+          <div class="level-card lc-amber">
+            <div class="level-label">Gamma Flip</div>
+            <div class="level-val" id="lv-flip">—</div>
+            <div class="level-sub">Cambio de régimen</div>
+          </div>
+          <div class="level-card lc-blue">
+            <div class="level-label">ATM IV</div>
+            <div class="level-val" id="lv-iv">—</div>
+            <div class="level-sub">Volatilidad implícita</div>
+          </div>
+          <div class="level-card lc-cyan">
+            <div class="level-label">HV20</div>
+            <div class="level-val" id="lv-hv20">—</div>
+            <div class="level-sub">Vol histórica 20d</div>
+          </div>
+          <div class="level-card lc-purple">
+            <div class="level-label">VRP</div>
+            <div class="level-val" id="lv-vrp">—</div>
+            <div class="level-sub">Vol risk premium</div>
+          </div>
+        </div>
+
+        <!-- NET GEX BAR -->
+        <div class="net-gex">
+          <div class="net-gex-header">
+            <span class="net-gex-label">Net Gamma Exposure</span>
+            <span class="net-gex-val" id="net-gex-val">—</span>
+          </div>
+          <div class="gex-bar-track">
+            <div class="gex-bar-pos" id="gex-pos" style="width:50%"></div>
+            <div class="gex-bar-neg" id="gex-neg" style="width:50%"></div>
+          </div>
+          <div class="gex-bar-labels">
+            <span class="text-green" id="gex-call-pct">Call GEX</span>
+            <span class="text-red" id="gex-put-pct">Put GEX</span>
+          </div>
+        </div>
+
+        <!-- VANNA / CHARM / VEX / CHEX -->
+        <div class="vc-grid">
+          <div class="vc-card">
+            <div class="vc-lbl">VEX (Vanna)</div>
+            <div class="vc-val text-cyan" id="vc-vex">—</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Vol → Delta</div>
+          </div>
+          <div class="vc-card">
+            <div class="vc-lbl">CHEX (Charm)</div>
+            <div class="vc-val text-purple" id="vc-chex">—</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Tiempo → Delta</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RAW DATA VIEWER -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Top Strikes GEX</span>
+        <span style="font-size:10px;color:var(--text3)">Gamma notional</span>
+      </div>
+      <div class="scroll-body">
+        <table class="sum-table" id="top-strikes-table" style="width:100%">
+          <thead>
+            <tr style="background:var(--bg3)">
+              <th style="padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);border-bottom:1px solid var(--border);text-align:left">Strike</th>
+              <th style="padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);border-bottom:1px solid var(--border);text-align:right">GEX</th>
+              <th style="padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);border-bottom:1px solid var(--border);text-align:right">Tipo</th>
+            </tr>
+          </thead>
+          <tbody id="top-strikes-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- BOTTOM: VEX + CHEX CHARTS -->
+<div class="bottom-strip">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">VEX — Vanna Exposure por Strike</span>
+    </div>
+    <div style="padding:10px 8px">
+      <div class="chart-wrap" style="height:200px"><canvas id="vexChart"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">CHEX — Charm Exposure por Strike</span>
+    </div>
+    <div style="padding:10px 8px">
+      <div class="chart-wrap" style="height:200px"><canvas id="chexChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_KEY = 'oRP5lIelZ0K66qRBJcltS1n1UrxV1WdmxHhWP2XT';
+const BASE    = 'https://api.flashalpha.com';
+
+let gexChart, dexChart, vexChart, chexChart;
+let currentTicker = 'SPY';
+
+// ─── API ───────────────────────────────────────────────────
+async function flashFetch(path) {
+  const res = await fetch(BASE + path, {
+    headers: { 'x-api-key': API_KEY, 'Accept': 'application/json' }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+async function loadAll(ticker) {
+  showLoading(ticker);
+  hideError();
+  currentTicker = ticker;
+
+  try {
+    const [summary, gex, dex, vex, chex] = await Promise.all([
+      flashFetch(`/v1/stock/${ticker.toLowerCase()}/summary`),
+      flashFetch(`/v1/exposure/gex/${ticker.toLowerCase()}`),
+      flashFetch(`/v1/exposure/dex/${ticker.toLowerCase()}`),
+      flashFetch(`/v1/exposure/vex/${ticker.toLowerCase()}`),
+      flashFetch(`/v1/exposure/chex/${ticker.toLowerCase()}`)
+    ]);
+
+    renderSummary(summary, ticker);
+    renderGexChart(gex, summary);
+    renderDexChart(dex, summary);
+    renderVexChart(vex);
+    renderChexChart(chex);
+    renderTopStrikes(gex);
+  } catch (err) {
+    showError(err.message);
+    console.error(err);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── RENDER SUMMARY ────────────────────────────────────────
+function renderSummary(d, ticker) {
+  // Nav
+  const price = d?.price ?? d?.spot_price ?? d?.last_price ?? '—';
+  document.getElementById('nav-price').textContent = typeof price === 'number' ? '$' + price.toFixed(2) : price;
+  document.getElementById('nav-change').textContent = 'datos en vivo';
+  document.getElementById('nav-change').className = 'nav-change';
+  document.getElementById('live-label').textContent = 'LIVE';
+
+  // Regime
+  const regime   = d?.gamma_regime ?? d?.regime ?? '';
+  const isPos    = regime.includes('positive') || (d?.net_gex ?? 0) > 0;
+  const regDot   = document.getElementById('regime-dot');
+  regDot.style.background = isPos ? 'var(--green)' : 'var(--red)';
+  document.getElementById('regime-text').textContent  = isPos ? 'Positive Gamma' : 'Negative Gamma';
+  document.getElementById('regime-text').className    = 'regime-text ' + (isPos ? 'text-green' : 'text-red');
+  document.getElementById('regime-desc').textContent  = isPos ? '— mercado contenido, reversión esperada' : '— mercado expansivo, movimientos amplificados';
+  document.getElementById('regime-right').textContent = 'Net GEX: ' + fmt(d?.net_gex, 'M');
+
+  // Stats row
+  document.getElementById('stat-flip').textContent = fmtPrice(d?.gamma_flip);
+  document.getElementById('stat-call').textContent = fmtPrice(d?.call_wall);
+  document.getElementById('stat-put').textContent  = fmtPrice(d?.put_wall);
+  document.getElementById('stat-iv').textContent   = fmtPct(d?.atm_iv ?? d?.iv);
+
+  // Vol grid
+  document.getElementById('v-atmiv').textContent  = fmtPct(d?.atm_iv ?? d?.iv);
+  document.getElementById('v-hv20').textContent   = fmtPct(d?.hv20 ?? d?.hv_20);
+  const vrp = d?.vrp ?? d?.vol_risk_premium;
+  const vrpEl = document.getElementById('v-vrp');
+  vrpEl.textContent = vrp != null ? (vrp > 0 ? '+' : '') + vrp.toFixed(1) : '—';
+  vrpEl.className   = 'vol-val ' + (vrp > 0 ? 'text-red' : vrp < 0 ? 'text-green' : 'text-muted');
+  document.getElementById('v-ivpct').textContent  = fmtPct(d?.iv_percentile ?? d?.iv_pct);
+  const netGex = d?.net_gex;
+  const netGexEl = document.getElementById('v-netgex');
+  netGexEl.textContent = fmt(netGex, 'M');
+  netGexEl.className   = 'vol-val ' + (netGex > 0 ? 'text-green' : 'text-red');
+  document.getElementById('v-regime').textContent  = isPos ? 'Positivo' : 'Negativo';
+  document.getElementById('v-regime').className    = 'vol-val ' + (isPos ? 'text-green' : 'text-red');
+
+  // Table levels
+  document.getElementById('t-call').textContent   = fmtPrice(d?.call_wall);
+  document.getElementById('t-put').textContent    = fmtPrice(d?.put_wall);
+  document.getElementById('t-flip').textContent   = fmtPrice(d?.gamma_flip);
+  document.getElementById('t-pain').textContent   = fmtPrice(d?.max_pain);
+  setColorVal('t-netgex', d?.net_gex, 'M');
+  setColorVal('t-netdex', d?.net_dex ?? d?.dex, 'M');
+  setColorVal('t-netvex', d?.net_vex ?? d?.vex, 'M');
+  setColorVal('t-netchex', d?.net_chex ?? d?.chex, 'M');
+
+  // Key levels panel
+  document.getElementById('levels-ticker').textContent = ticker;
+  document.getElementById('lv-call').textContent  = fmtPrice(d?.call_wall);
+  document.getElementById('lv-put').textContent   = fmtPrice(d?.put_wall);
+  document.getElementById('lv-flip').textContent  = fmtPrice(d?.gamma_flip);
+  document.getElementById('lv-iv').textContent    = fmtPct(d?.atm_iv ?? d?.iv);
+  document.getElementById('lv-hv20').textContent  = fmtPct(d?.hv20 ?? d?.hv_20);
+  const vrpLv = document.getElementById('lv-vrp');
+  vrpLv.textContent = vrp != null ? (vrp > 0 ? '+' : '') + vrp.toFixed(1) : '—';
+
+  // Net GEX bar
+  document.getElementById('net-gex-val').textContent = fmt(netGex, 'M');
+  document.getElementById('net-gex-val').className   = 'net-gex-val ' + (netGex > 0 ? 'text-green' : 'text-red');
+  const callGex = d?.call_gex ?? (netGex > 0 ? netGex * 0.6 : 0);
+  const putGex  = Math.abs(d?.put_gex  ?? (netGex <= 0 ? netGex * -0.6 : 0));
+  const total   = callGex + putGex || 1;
+  const cRatio  = Math.round(callGex / total * 100);
+  document.getElementById('gex-pos').style.width = cRatio + '%';
+  document.getElementById('gex-neg').style.width = (100 - cRatio) + '%';
+  document.getElementById('gex-call-pct').textContent = 'Calls: ' + cRatio + '%';
+  document.getElementById('gex-put-pct').textContent  = 'Puts: ' + (100 - cRatio) + '%';
+
+  // VEX / CHEX
+  setColorVal('vc-vex', d?.net_vex ?? d?.vex, 'M');
+  setColorVal('vc-chex', d?.net_chex ?? d?.chex, 'M');
+
+  document.getElementById('gex-header-label').textContent = ticker + ' · FlashAlpha Live';
+  document.getElementById('summary-updated').textContent  = 'actualizado: ' + new Date().toLocaleTimeString('es-MX');
+}
+
+// ─── CHARTS ────────────────────────────────────────────────
+function renderGexChart(data, summary) {
+  // data is array of {strike, gex_notional} or similar
+  const rows   = normalizeStrikeData(data, 'gex');
+  const labels = rows.map(r => '$' + r.strike);
+  const vals   = rows.map(r => r.value);
+  const colors = vals.map(v => v >= 0 ? 'rgba(63,185,80,0.75)' : 'rgba(248,81,73,0.75)');
+  const price  = summary?.price ?? summary?.spot_price;
+
+  if (gexChart) gexChart.destroy();
+  gexChart = new Chart(document.getElementById('gexChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0, borderRadius: 2, borderSkipped: false }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1c2230', borderColor: '#2a3a4d', borderWidth: 1,
+          titleColor: '#8b949e', bodyColor: '#c9d1d9',
+          callbacks: { label: ctx => ` GEX: ${ctx.raw > 0 ? '+' : ''}${ctx.raw.toFixed(1)}M` }
+        },
+        annotation: price ? {
+          annotations: {
+            price: {
+              type: 'line', scaleID: 'x', value: 0,
+              borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderDash: [3,3]
+            }
+          }
+        } : undefined
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#4a5568', font: { family: "'IBM Plex Mono'", size: 9 },
+            callback: v => (v > 0 ? '+' : '') + v.toFixed(0) + 'M' },
+          border: { color: '#1e2d3d' }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#8b949e', font: { family: "'IBM Plex Mono'", size: 9 } },
+          border: { color: '#1e2d3d' }
+        }
+      }
+    }
+  });
+}
+
+function renderDexChart(data, summary) {
+  const rows   = normalizeStrikeData(data, 'dex');
+  const labels = rows.map(r => '$' + r.strike);
+  const vals   = rows.map(r => r.value);
+  const colors = vals.map(v => v >= 0 ? 'rgba(56,139,253,0.65)' : 'rgba(248,81,73,0.55)');
+
+  document.getElementById('dex-total').textContent = 'Total: ' + fmt(vals.reduce((a,b) => a+b, 0), 'M');
+
+  if (dexChart) dexChart.destroy();
+  dexChart = makeBarChart('dexChart', labels, vals, colors);
+}
+
+function renderVexChart(data) {
+  const rows   = normalizeStrikeData(data, 'vex');
+  const labels = rows.map(r => '$' + r.strike);
+  const vals   = rows.map(r => r.value);
+  const colors = vals.map(v => v >= 0 ? 'rgba(57,197,207,0.65)' : 'rgba(137,87,229,0.55)');
+  if (vexChart) vexChart.destroy();
+  vexChart = makeBarChart('vexChart', labels, vals, colors);
+}
+
+function renderChexChart(data) {
+  const rows   = normalizeStrikeData(data, 'chex');
+  const labels = rows.map(r => '$' + r.strike);
+  const vals   = rows.map(r => r.value);
+  const colors = vals.map(v => v >= 0 ? 'rgba(137,87,229,0.65)' : 'rgba(248,81,73,0.55)');
+  if (chexChart) chexChart.destroy();
+  chexChart = makeBarChart('chexChart', labels, vals, colors);
+}
+
+function makeBarChart(id, labels, vals, colors) {
+  return new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0, borderRadius: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#1c2230', borderColor: '#2a3a4d', borderWidth: 1,
+        titleColor: '#8b949e', bodyColor: '#c9d1d9',
+        callbacks: { label: ctx => ` ${ctx.raw > 0 ? '+' : ''}${ctx.raw.toFixed(1)}M` }
+      }},
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#4a5568', font: { family: "'IBM Plex Mono'", size: 8 }, maxTicksLimit: 12, maxRotation: 45 },
+          border: { color: '#1e2d3d' }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#8b949e', font: { family: "'IBM Plex Mono'", size: 9 },
+            callback: v => (v > 0 ? '+' : '') + v.toFixed(0) + 'M' },
+          border: { color: '#1e2d3d' }
+        }
+      }
+    }
+  });
+}
+
+// ─── TOP STRIKES TABLE ────────────────────────────────────
+function renderTopStrikes(data) {
+  const rows = normalizeStrikeData(data, 'gex');
+  const sorted = [...rows].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 12);
+  const tbody = document.getElementById('top-strikes-body');
+  tbody.innerHTML = sorted.map(r => `
+    <tr>
+      <td style="padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c9d1d9;border-bottom:1px solid rgba(30,45,61,0.5)">$${r.strike}</td>
+      <td style="padding:6px 10px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;border-bottom:1px solid rgba(30,45,61,0.5);color:${r.value >= 0 ? 'var(--green)' : 'var(--red)'}">
+        ${r.value > 0 ? '+' : ''}${r.value.toFixed(1)}M
+      </td>
+      <td style="padding:6px 10px;text-align:right;border-bottom:1px solid rgba(30,45,61,0.5)">
+        <span class="badge ${r.value >= 0 ? 'badge-pos' : 'badge-neg'}">${r.value >= 0 ? 'CALL' : 'PUT'}</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ─── DATA NORMALIZATION ───────────────────────────────────
+// FlashAlpha may return various shapes — normalize them
+function normalizeStrikeData(data, type) {
+  if (!data) return [];
+  // Could be array directly
+  let arr = Array.isArray(data) ? data : (data?.data ?? data?.strikes ?? data?.exposure ?? []);
+  if (!arr.length) return [];
+
+  return arr.map(row => {
+    const strike = row.strike ?? row.strike_price ?? row.k ?? row.price ?? 0;
+    // Try various field names for the value
+    const value = row[type] ?? row[type + '_notional'] ?? row[type + '_exposure'] ??
+      row.notional ?? row.value ?? row.exposure ?? row.gamma_notional ??
+      row.delta_notional ?? row.vanna_notional ?? row.charm_notional ?? 0;
+    return { strike: +strike, value: +(value / 1e6).toFixed(2) }; // normalize to millions
+  }).filter(r => r.strike > 0).sort((a, b) => a.strike - b.strike);
+}
+
+// ─── FORMATTERS ───────────────────────────────────────────
+function fmtPrice(v) {
+  if (v == null) return '—';
+  return '$' + (+v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+function fmtPct(v) {
+  if (v == null) return '—';
+  const n = +v;
+  return (n < 2 ? (n * 100).toFixed(1) : n.toFixed(1)) + '%';
+}
+function fmt(v, suffix = '') {
+  if (v == null) return '—';
+  const n = +v;
+  const abs = Math.abs(n);
+  let s;
+  if (abs >= 1e9)      s = (n/1e9).toFixed(2) + 'B';
+  else if (abs >= 1e6) s = (n/1e6).toFixed(1) + 'M';
+  else if (abs >= 1e3) s = (n/1e3).toFixed(1) + 'K';
+  else                 s = n.toFixed(1);
+  return (n > 0 ? '+' : '') + s;
+}
+function setColorVal(id, val, suffix) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = fmt(val, suffix);
+  el.style.color = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--text2)';
+}
+
+// ─── UI HELPERS ───────────────────────────────────────────
+function showLoading(ticker) {
+  document.getElementById('loading-ticker').textContent = ticker;
+  document.getElementById('loading').classList.remove('hidden');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.add('hidden');
+}
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  document.getElementById('error-msg').textContent = 'Error: ' + msg + ' — verifica tu API key o intenta más tarde.';
+  el.classList.add('show');
+}
+function hideError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+// ─── TICKER SWITCHING ─────────────────────────────────────
+function loadTicker(ticker, btn) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadAll(ticker);
+}
+
+function loadCustom() {
+  const val = document.getElementById('custom-input').value.trim().toUpperCase();
+  if (!val) return;
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  loadAll(val);
+}
+
+// ─── BOOT ─────────────────────────────────────────────────
+loadAll('SPY');
+</script>
+</body>
+</html>
